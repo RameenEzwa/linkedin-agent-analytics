@@ -144,7 +144,32 @@ def load_records(records: list[dict]) -> str:
                         "error_message": str(exc),
                     },
                 )
+                # Advance the watermark only after all records have been processed
+        source_timestamps = [
+            record["source_updated_at"]
+            for record in records
+            if record.get("source_updated_at") is not None
+        ]
 
+        if source_timestamps:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO ingestion_watermark
+                        (source_name, last_updated_at)
+                    VALUES
+                        (:source_name, :last_updated_at)
+                    ON CONFLICT (source_name)
+                    DO UPDATE SET
+                    last_updated_at = EXCLUDED.last_updated_at
+                  """
+                ),
+               {
+                    "source_name": "linkedin",
+                    "last_updated_at": max(source_timestamps),
+            },
+            )
+        
         ended_at = datetime.now(timezone.utc)
 
         connection.execute(
@@ -223,9 +248,21 @@ def filter_incremental_records(
     if watermark is None:
         return records
 
-    return [
-        record
-        for record in records
-        if record.get("source_updated_at") is not None
-        and record["source_updated_at"] > watermark
-    ]
+    if watermark.tzinfo is None:
+        watermark = watermark.replace(tzinfo=timezone.utc)
+
+    filtered = []
+
+    for record in records:
+        source_updated_at = record.get("source_updated_at")
+
+        if source_updated_at is None:
+            continue
+
+        if source_updated_at.tzinfo is None:
+            source_updated_at = source_updated_at.replace(tzinfo=timezone.utc)
+
+        if source_updated_at > watermark:
+            filtered.append(record)
+
+    return filtered

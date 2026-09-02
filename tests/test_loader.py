@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import text
 
-from src.ingestion.loader import load_records
+from src.ingestion.loader import load_records, get_watermark
 from src.ingestion.database import get_engine
 
 
@@ -84,3 +84,47 @@ def test_load_records_is_idempotent():
         )
 
         assert result.scalar() == 1
+
+def test_load_records_advances_watermark():
+    existing_watermark = get_watermark("linkedin")
+
+    if existing_watermark is not None and existing_watermark.tzinfo is None:
+        existing_watermark = existing_watermark.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
+
+    if existing_watermark is not None and now <= existing_watermark:
+        timestamp = existing_watermark.replace(
+            microsecond=existing_watermark.microsecond + 1
+        )
+    else:
+        timestamp = now
+
+    record = {
+        "lead_id": "TEST-WATERMARK-001",
+        "profile_url": "https://example.com/watermark",
+        "first_name": "Test",
+        "last_name": "Watermark",
+        "job_title": "Data Analyst",
+        "company_name": "Test Company",
+        "industry": "Technology",
+        "network_degree": "1st",
+        "pipeline_stage": "Connected",
+        "invited_at": None,
+        "accepted_at": None,
+        "messaged_at": None,
+        "replied_at": None,
+        "last_updated_at": timestamp,
+        "source_updated_at": timestamp,
+    }
+
+    load_records([record])
+
+    watermark = get_watermark("linkedin")
+
+    assert watermark is not None
+
+    if watermark.tzinfo is None:
+        watermark = watermark.replace(tzinfo=timezone.utc)
+
+    assert watermark == timestamp

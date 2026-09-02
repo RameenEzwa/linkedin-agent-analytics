@@ -15,6 +15,24 @@ jobs:
     name: Run automated tests
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: linkedin_agent_analytics
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d linkedin_agent_analytics"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/linkedin_agent_analytics
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,6 +48,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
+
+      - name: Initialize database schema
+        run: |
+          python -c "from pathlib import Path; from src.ingestion.database import get_engine; e=get_engine(); c=e.connect(); c.exec_driver_sql(Path('database/schema.sql').read_text()); c.exec_driver_sql(Path('docs/star_schema.sql').read_text()); c.exec_driver_sql(Path('database/dq_schema.sql').read_text()); c.commit(); c.close()"
 
       - name: Run tests
         run: |

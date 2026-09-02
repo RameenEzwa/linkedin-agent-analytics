@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: linkedin_agent_analytics
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d linkedin_agent_analytics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./docs/star_schema.sql:/docker-entrypoint-initdb.d/02_star_schema.sql:ro
+      - ./database/dq_schema.sql:/docker-entrypoint-initdb.d/03_dq_schema.sql:ro
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/linkedin_agent_analytics

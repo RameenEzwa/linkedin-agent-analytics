@@ -13,20 +13,23 @@ def load_records(records: list[dict]) -> str:
 
     Uses lead_id as the unique key so repeated runs do not
     create duplicate records.
+
+    The ingestion watermark advances only to the latest
+    successfully loaded record. Failed records remain eligible
+    for a future retry.
     """
     records = filter_incremental_records(
         records,
         source_name="linkedin",
     )
-    
+
     engine = get_engine()
     run_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc)
 
     rows_in = len(records)
     rows_out = 0
-    status = "SUCCESS"
-    error_message = None
+    failed_records = 0
 
     with engine.begin() as connection:
         connection.execute(
@@ -45,6 +48,8 @@ def load_records(records: list[dict]) -> str:
                 "rows_in": rows_in,
             },
         )
+
+        successful_timestamps = []
 
         for record in records:
             try:
@@ -128,7 +133,19 @@ def load_records(records: list[dict]) -> str:
 
                 rows_out += 1
 
+                source_updated_at = record.get("source_updated_at")
+
+                if source_updated_at is not None:
+                    if source_updated_at.tzinfo is None:
+                        source_updated_at = source_updated_at.replace(
+                            tzinfo=timezone.utc
+                        )
+
+                    successful_timestamps.append(source_updated_at)
+
             except Exception as exc:
+                failed_records += 1
+
                 connection.execute(
                     text(
                         """
@@ -140,36 +157,55 @@ def load_records(records: list[dict]) -> str:
                     ),
                     {
                         "run_id": run_id,
-                        "record_payload": json.dumps(record),
+                        "record_payload": json.dumps(
+                            record,
+                            default=str,
+                        ),
                         "error_message": str(exc),
                     },
                 )
-                # Advance the watermark only after all records have been processed
-        source_timestamps = [
-            record["source_updated_at"]
-            for record in records
-            if record.get("source_updated_at") is not None
-        ]
 
-        if source_timestamps:
+        # Only advance the watermark to the latest record that
+        # was actually loaded successfully.
+        if successful_timestamps:
             connection.execute(
                 text(
                     """
-                    INSERT INTO ingestion_watermark
-                        (source_name, last_updated_at)
-                    VALUES
-                        (:source_name, :last_updated_at)
+                    INSERT INTO ingestion_watermark (
+                        source_name,
+                        last_updated_at
+                    )
+                    VALUES (
+                        :source_name,
+                        :last_updated_at
+                    )
                     ON CONFLICT (source_name)
                     DO UPDATE SET
-                    last_updated_at = EXCLUDED.last_updated_at
-                  """
+                        last_updated_at = EXCLUDED.last_updated_at
+                    """
                 ),
-               {
+                {
                     "source_name": "linkedin",
-                    "last_updated_at": max(source_timestamps),
-            },
+                    "last_updated_at": max(successful_timestamps),
+                },
             )
-        
+
+        if failed_records == 0:
+            status = "SUCCESS"
+            error_message = None
+        elif rows_out > 0:
+            status = "PARTIAL"
+            error_message = (
+                f"{failed_records} record(s) failed and were "
+                "written to dead_letter."
+            )
+        else:
+            status = "FAILED"
+            error_message = (
+                f"All {failed_records} record(s) failed and were "
+                "written to dead_letter."
+            )
+
         ended_at = datetime.now(timezone.utc)
 
         connection.execute(
@@ -194,7 +230,6 @@ def load_records(records: list[dict]) -> str:
         )
 
     return run_id
-
 def get_watermark(source_name: str) -> datetime | None:
     engine = get_engine()
 

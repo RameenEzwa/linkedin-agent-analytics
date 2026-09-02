@@ -62,8 +62,8 @@ def test_load_records_is_idempotent():
         "accepted_at": None,
         "messaged_at": None,
         "replied_at": None,
-        "last_updated_at": "2026-08-23T00:00:00+00:00",
-        "source_updated_at": "2026-08-23T00:00:00+00:00",
+        "last_updated_at": datetime.now(timezone.utc),
+        "source_updated_at": datetime.now(timezone.utc),
     }
 
     load_records([record])

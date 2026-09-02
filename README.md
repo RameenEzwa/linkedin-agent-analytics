@@ -1,73 +1,54 @@
 # LinkedIn Agent Analytics Platform
 
+An end-to-end analytics platform for monitoring LinkedIn outreach activity, account health, data quality, risk signals, and recommended outreach capacity.
+
+The platform demonstrates a complete data workflow from ingestion and operational storage through data-quality validation, analytical modeling, risk/capacity calculations, and Power BI reporting.
+
+---
+
 ## Overview
 
-The LinkedIn Agent Analytics Platform is an analytics solution for monitoring LinkedIn outreach activity, account health, data quality, risk signals, and recommended outreach capacity.
+The LinkedIn Agent Analytics Platform is designed to support outreach operations with reliable, auditable analytics.
 
-The platform moves data from source ingestion through an operational layer and analytical star schema into Power BI.
+The solution provides:
 
-## Architecture
+- LinkedIn outreach data ingestion
+- Idempotent loading and ingestion watermark management
+- Operational data storage in PostgreSQL
+- Dead-letter handling for failed records
+- Automated data-quality checks and scoring
+- Dimensional star-schema modeling
+- Account risk scoring
+- Recommended daily outreach capacity
+- Power BI analytics and visualization
+- Automated Python tests
+- GitHub Actions CI validation
+- Docker and Docker Compose deployment
 
-The main flow is:
-
-Source API
-→ API Client
-→ Staging / Operational Layer
-→ Transformation & Data Modeling
-→ Star Schema
-→ Power BI Presentation Layer
-
-The analytical star schema contains:
-
-- `dim_date`
-- `dim_account`
-- `dim_lead`
-- `dim_campaign`
-- `dim_segment`
-- `fact_linkedin_activity`
-
-The operational layer contains:
-
-- `linkedin_outreach`
-- `run_metadata`
-- `dead_letter`
-- `ingestion_watermark`
-
-## Project Structure
+### End-to-end flow
 
 ```text
-linkedin-agent-analytics/
-├── database/
-│   ├── schema.sql
-│   └── dq_schema.sql
-├── docs/
-│   ├── architecture.md
-│   ├── data_dictionary.md
-│   ├── data_flow.md
-│   ├── data_quality.md
-│   ├── risk_model.md
-│   └── star_schema.sql
-├── powerbi/
-│   └── Power BI report
-├── src/
-│   ├── analytics/
-│   │   ├── capacity.py
-│   │   └── risk_model.py
-│   ├── ingestion/
-│   │   ├── client.py
-│   │   ├── database.py
-│   │   └── loader.py
-│   └── quality/
-│       ├── dq_checks.py
-│       ├── dq_runner.py
-│       └── dq_score.py
-├── tests/
-│   ├── test_capacity.py
-│   ├── test_database.py
-│   ├── test_data_quality.py
-│   ├── test_loader.py
-│   └── test_risk_model.py
-├── Scripts/
-│   └── run_quality_check.ps1
-├── requirements.txt
-└── README.md
+Source API
+    |
+    v
+API Client
+    |
+    v
+Operational / Staging Layer
+    |
+    +--> Ingestion Watermark
+    |
+    +--> Dead Letter Records
+    |
+    v
+Data Quality Checks
+    |
+    v
+Analytical Star Schema
+    |
+    +--> Risk Analytics
+    |
+    +--> Capacity Analytics
+    |
+    v
+Power BI
